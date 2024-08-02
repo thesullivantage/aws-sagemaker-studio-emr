@@ -1,3 +1,4 @@
+# Modified for use by John M. Sullivan for Soar Aviation LLC
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Brings up EMR cluster in No-Auth mode, 
@@ -671,6 +672,7 @@ Resources:
           - parameter
           Path:
             Fn::Sub: s3://${S3Bucket}/artifacts/sma-milestone1/installpylibs-v2.sh
+            # can sub public github url
       AutoScalingRole: EMR_AutoScaling_DefaultRole
       Configurations:
       - Classification: livy-conf
@@ -682,7 +684,7 @@ Resources:
           EbsConfiguration:
             EbsBlockDeviceConfigs:
             - VolumeSpecification:
-                SizeInGB: '320'
+                SizeInGB: '128'
                 VolumeType: gp2
               VolumesPerInstance: '1'
             EbsOptimized: 'true'

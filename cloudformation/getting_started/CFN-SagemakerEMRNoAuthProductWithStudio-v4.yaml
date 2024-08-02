@@ -1,3 +1,5 @@
+
+
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
@@ -14,6 +16,8 @@ Mappings:
       Vpc: 10.0.0.0/16
       PublicSubnet1: 10.0.10.0/24
       PrivateSubnet1: 10.0.20.0/24
+  
+  # MARK DEV: bootstrap in new bootstrap script!
   ClusterConfigurations:
     emr:
       BootStrapScriptFile: installpylibs-v2.sh
@@ -27,12 +31,17 @@ Parameters:
     Type: String
     Description: Name of the Studio Domain to Create
     Default: SageMakerEMRDomain
+  
+  S3LakehouseFactory:
+    Type: String
+    Description: ARN of data bucket for lakehouse steps to create curated data.
+    Default: arn:aws:s3:::sagemaker-emr-fac-general
 
 Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Join [ "-", [ "sagemaker-emr-template-cfn", !Select [ 2, !Split [ "/", !Ref AWS::StackId ] ] ] ]
+      BucketName: !Join [ "-", [ "sagemaker-emr-env-sample", !Select [ 2, !Split [ "/", !Ref AWS::StackId ] ] ] ]
 
   VPC:
     Type: 'AWS::EC2::VPC'
@@ -140,7 +149,6 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName} Private Routes (AZ1)'
 
-
   PrivateSubnet1RouteTableAssociation:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
@@ -226,7 +234,19 @@ Resources:
               - 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: !Sub '${AWS::StackName}-sageemr'
+        # Inline: access analysis (lakehouse) bucket
+        - PolicyName: 'sagemaker-execution-allow-lakehouse-bucket-access'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:AbortMultipartUpload
+                Resource: !Ref S3LakehouseFactory
+        - PolicyName: !Sub '${AWS::StackName}-sageemr-template'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -253,9 +273,10 @@ Resources:
                 Resource: '*'
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSageMakerFullAccess"
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess"
+        # - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess" # grant only partial access above
 
   VPCEndpointSagemakerAPI:
+    # default: full access
     Type: AWS::EC2::VPCEndpoint
     Properties:
       PolicyDocument:
@@ -274,6 +295,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sagemaker.api'
       VpcId: !Ref VPC
   VPCEndpointSageMakerRuntime:
+  # default: full access
     Type: AWS::EC2::VPCEndpoint
     Properties:
       PolicyDocument:
@@ -292,6 +314,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sagemaker.runtime'
       VpcId: !Ref VPC
   VPCEndpointSTS:
+  # default: full access
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
       PolicyDocument:
@@ -310,6 +333,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sts'
       VpcId: !Ref VPC
   VPCEndpointCW:
+  # MARK DEV: default: full access
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
       PolicyDocument:
@@ -328,6 +352,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.monitoring'
       VpcId: !Ref VPC
   VPCEndpointCWL:
+  # MARK DEV: default: full access
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
       PolicyDocument:
@@ -346,6 +371,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
       VpcId: !Ref VPC
   VPCEndpointECR:
+    # Default: full access
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
       PolicyDocument:
@@ -364,6 +390,7 @@ Resources:
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
       VpcId: !Ref VPC
   VPCEndpointECRAPI:
+    # default: full access 
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
       PolicyDocument:
@@ -387,6 +414,7 @@ Resources:
     Type: AWS::SageMaker::Domain
     Properties:
       DomainName: !Ref SageMakerDomainName
+      # NOTE: all traffic run through private subnet, NAT to internet gateway
       AppNetworkAccessType: VpcOnly
       AuthMode: IAM
       VpcId: !Ref VPC
@@ -417,6 +445,8 @@ Resources:
         - Name: SageMaker Studio Domain No Auth EMR
           Description: Provisions a SageMaker domain and No Auth EMR Cluster
           Info:
+            ### MARK DEV: sub in address of CF tempalte
+            # EMR on EC2 (No-Auth) security policy and cluster configuration. 
             LoadTemplateFromURL: https://aws-blogs-artifacts-public.s3.amazonaws.com/artifacts/astra-m4-sagemaker/end-to-end/CFN-EMR-NoStudioNoAuthTemplate-v3.yaml
       Tags:
         - Key: "sagemaker:studio-visibility:emr"
@@ -443,9 +473,11 @@ Resources:
             - Action:
               - s3:*
               Effect: Allow
+              # NOTE: analysis bucket (made above) / Lakehouse Factory Buckets (scoped as feel appropriate)
               Resource:
-              - !Sub "arn:${AWS::Partition}:s3:::sagemaker-emr-template-cfn-*/*"
-              - !Sub "arn:${AWS::Partition}:s3:::sagemaker-emr-template-cfn-*"
+              - !Sub "arn:${AWS::Partition}:s3:::sagemaker-emr-env-sample-*/*" # landing zone bucket
+              - !Sub "arn:${AWS::Partition}:s3:::sagemaker-emr-env-sample-*" # landing zone bucket
+              - !Ref S3LakehouseFactory
             - Action:
               - s3:GetObject
               Effect: Allow
@@ -553,7 +585,7 @@ Resources:
       Path: "/"
       Policies:
         - PolicyName:
-            Fn::Sub: AllowEMRInstnaceProfilePolicy-${AWS::StackName}
+            Fn::Sub: AllowEMRInstanceProfilePolicy-${AWS::StackName}
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -577,6 +609,7 @@ Resources:
                 - ec2.amazonaws.com
         Version: '2012-10-17'
       ManagedPolicyArns:
+        # AWS::Partition -> "aws" in standard regions
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSageMakerFullAccess"
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess"
       Path: "/"
@@ -593,6 +626,8 @@ Resources:
       DestBucket:
         Ref: S3Bucket
       SourceBucket:
+        ### MARK DDEV: add other bucket for custom boostrap script in source script
+        ### one in this account should be fine, given management policy, here.
         Fn::FindInMap:
           - ClusterConfigurations
           - s3params
@@ -603,6 +638,7 @@ Resources:
           - s3params
           - S3Key
       Objects:
+        ### MARK DEV: add objects for custom boostrap script in source script
         - Fn::FindInMap:
             - ClusterConfigurations
             - emr
@@ -626,7 +662,7 @@ Resources:
       Path: "/"
       Policies:
         - PolicyName:
-            Fn::Sub: BucketManagementLambdaPolicy-${AWS::StackName}
+            Fn::Sub: BucketManagementLambdaPolicy-${AWS::StackName} # aws
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -748,6 +784,7 @@ Resources:
 
 # Stack Outputs
 ###########################################################################
+# Note: imported templates in 
 Outputs:
   SageMakerEMRDemoCloudformationVPCId:
     Description: The ID of the Sagemaker Studio VPC

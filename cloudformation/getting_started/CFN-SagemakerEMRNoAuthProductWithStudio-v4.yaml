@@ -25,6 +25,7 @@ Mappings:
     s3params:
       BlogS3Bucket: aws-ml-blog
       S3Key: artifacts/sma-milestone1/
+      accountOwnerID:
 
 Parameters:
   SageMakerDomainName:
@@ -608,10 +609,22 @@ Resources:
               Service:
                 - ec2.amazonaws.com
         Version: '2012-10-17'
+      Policies:
+        - PolicyName: 'sagemaker-execution-allow-lakehouse-bucket-access'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:AbortMultipartUpload
+                Resource: !Ref S3LakehouseFactory
       ManagedPolicyArns:
-        # AWS::Partition -> "aws" in standard regions
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSageMakerFullAccess"
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess"
+        # do not allow access to all buckets in account:
+        # - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3ReadOnlyAccess" 
       Path: "/"
     Type: AWS::IAM::Role
 
@@ -625,6 +638,8 @@ Resources:
         Fn::GetAtt: CopyZipsFunction.Arn
       DestBucket:
         Ref: S3Bucket
+      ### MARK DEV bucket/prefix/object
+      ### key = prefix + o
       SourceBucket:
         ### MARK DEV: add other bucket for custom boostrap script in source script
         ### one in this account should be fine, given management policy, here.

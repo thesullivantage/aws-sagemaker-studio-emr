@@ -626,11 +626,7 @@ Resources:
       DestBucket:
         Ref: S3Bucket
       SourceBucket:
-<<<<<<< Updated upstream
-        ### MARK DEV: add other bucket that is full backup of aws one for custom boostrap script in source script
-=======
         ### MARK DEV: add other bucket for custom boostrap script in source script
->>>>>>> Stashed changes
         ### one in this account should be fine, given management policy, here.
         Fn::FindInMap:
           - ClusterConfigurations
